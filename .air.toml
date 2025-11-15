@@ -1,0 +1,12 @@
+# Root folder
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/server.exe ./cmd/server"
+bin = "tmp/server.exe"
+include_ext = ["go"]
+exclude_dir = ["tmp", "vendor"]
+
+[log]
+time = true
