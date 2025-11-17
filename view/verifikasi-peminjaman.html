@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verifikasi Peminjaman - Sistem Peminjaman Sarpras</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <nav class="bg-white shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <a href="/view/dashboard-sarpras.html" class="text-xl font-bold text-gray-800">Sistem Peminjaman Sarpras</a>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button onclick="logout()" class="text-red-600 hover:text-red-800">Logout</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <h2 class="text-2xl font-bold text-gray-800 mb-6">Verifikasi Peminjaman</h2>
+
+        <div id="peminjamanDetail" class="bg-white rounded-lg shadow p-6 mb-6">
+            <p class="text-gray-500">Memuat data...</p>
+        </div>
+
+        <div id="pendingWrapper" class="bg-white rounded-lg shadow p-6 mb-6 hidden">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Pilih Pengajuan Pending</h3>
+            <div id="pendingList" class="space-y-4">
+                <p class="text-gray-500">Memuat daftar pending...</p>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Tindakan Verifikasi</h3>
+            <form id="verifikasiForm">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                    <select id="status" name="status" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <option value="">Pilih Status</option>
+                        <option value="APPROVED">Setujui</option>
+                        <option value="REJECTED">Tolak</option>
+                    </select>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Catatan Verifikasi</label>
+                    <textarea id="catatan" name="catatan" rows="4" class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
+                </div>
+                <div class="flex space-x-4">
+                    <button type="submit" class="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700">
+                        Simpan Verifikasi
+                    </button>
+                    <a href="/view/dashboard-sarpras.html" class="flex-1 bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300 text-center">
+                        Kembali
+                    </a>
+                </div>
+            </form>
+            <div id="errorMessage" class="mt-4 text-red-600 text-sm hidden"></div>
+        </div>
+    </div>
+
+    <script src="/view/js/api.js"></script>
+    <script>
+        checkAuth();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const peminjamanId = urlParams.get('id');
+        const detailContainer = document.getElementById('peminjamanDetail');
+        const formElement = document.getElementById('verifikasiForm');
+        const infoBox = document.getElementById('errorMessage');
+
+        const pendingWrapper = document.getElementById('pendingWrapper');
+        const pendingList = document.getElementById('pendingList');
+
+        if (!peminjamanId) {
+            formElement.classList.add('hidden');
+            detailContainer.innerHTML = `
+                <div class="text-center py-8">
+                    <p class="text-gray-600">Silakan pilih pengajuan yang ingin diverifikasi.</p>
+                    <p class="text-gray-600 mt-2">Daftar pengajuan pending ditampilkan di bawah.</p>
+                </div>
+            `;
+            pendingWrapper.classList.remove('hidden');
+            loadPendingList();
+        } else {
+            loadPeminjaman();
+        }
+
+        async function loadPeminjaman() {
+            try {
+                const data = await apiCall(`/peminjaman/${peminjamanId}`);
+                const container = document.getElementById('peminjamanDetail');
+                
+                container.innerHTML = `
+                    <div class="space-y-4">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-800 mb-2">Detail Peminjaman</h3>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p class="text-sm text-gray-600">Ruangan</p>
+                                    <p class="font-medium">${data.ruangan ? data.ruangan.nama_ruangan : 'Tidak ada'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-600">Peminjam</p>
+                                    <p class="font-medium">${data.peminjam ? data.peminjam.nama : 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-600">Tanggal Mulai</p>
+                                    <p class="font-medium">${new Date(data.tanggal_mulai).toLocaleString('id-ID')}</p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-600">Tanggal Selesai</p>
+                                    <p class="font-medium">${new Date(data.tanggal_selesai).toLocaleString('id-ID')}</p>
+                                </div>
+                                <div class="col-span-2">
+                                    <p class="text-sm text-gray-600">Keperluan</p>
+                                    <p class="font-medium">${data.keperluan}</p>
+                                </div>
+                                ${data.barang && data.barang.length > 0 ? `
+                                    <div class="col-span-2">
+                                        <p class="text-sm text-gray-600">Barang yang Dipinjam</p>
+                                        <ul class="list-disc list-inside">
+                                            ${data.barang.map(b => `<li>${b.barang.nama_barang} - ${b.jumlah} unit</li>`).join('')}
+                                        </ul>
+                                    </div>
+                                ` : ''}
+                                <div class="col-span-2">
+                                    <p class="text-sm text-gray-600">Surat Digital</p>
+                                    <a href="${data.surat_digital_url}" target="_blank" class="text-blue-600 hover:text-blue-800">Lihat Surat</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading peminjaman:', error);
+            }
+        }
+
+        formElement.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const status = document.getElementById('status').value;
+            const catatan = document.getElementById('catatan').value;
+
+            try {
+                await apiCall(`/peminjaman/${peminjamanId}/verifikasi`, {
+                    method: 'POST',
+                    body: JSON.stringify({ status, catatan_verifikasi: catatan })
+                });
+                
+                alert('Verifikasi berhasil disimpan!');
+                window.location.href = '/view/dashboard-sarpras.html';
+            } catch (error) {
+                infoBox.textContent = error.message;
+                infoBox.classList.remove('hidden');
+            }
+        });
+
+        async function loadPendingList() {
+            try {
+                const data = await apiCall('/peminjaman/pending');
+                if (!data || data.length === 0) {
+                    pendingList.innerHTML = '<p class="text-gray-500">Tidak ada pengajuan pending.</p>';
+                    return;
+                }
+
+                pendingList.innerHTML = data.map(p => `
+                    <div class="border-l-4 border-yellow-500 p-4 bg-gray-50 flex justify-between items-center">
+                        <div>
+                            <p class="font-semibold">${p.ruangan ? p.ruangan.nama_ruangan : 'Barang'}</p>
+                            <p class="text-sm text-gray-600">
+                                ${new Date(p.tanggal_mulai).toLocaleDateString('id-ID')} - ${new Date(p.tanggal_selesai).toLocaleDateString('id-ID')}
+                            </p>
+                            <p class="text-sm text-gray-600">Peminjam: ${p.peminjam ? p.peminjam.nama : 'N/A'}</p>
+                        </div>
+                        <button
+                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                            onclick="window.location.href='/view/verifikasi-peminjaman.html?id=${p.id}'">
+                            Review
+                        </button>
+                    </div>
+                `).join('');
+            } catch (error) {
+                pendingList.innerHTML = `<p class="text-red-600">Gagal memuat daftar pending: ${error.message}</p>`;
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/view/index.html';
+        }
+
+    </script>
+</body>
+</html>
+

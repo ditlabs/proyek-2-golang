@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daftar - Sistem Peminjaman Sarpras</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-green-50 to-emerald-100 min-h-screen flex items-center justify-center">
+    <div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-lg">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">Daftar Akun Baru</h1>
+            <p class="text-gray-600 mt-2">Sistem Peminjaman Sarana & Prasarana Kampus</p>
+        </div>
+
+        <form id="registerForm" class="space-y-5">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Nama Lengkap *</label>
+                <input type="text" id="nama" required
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Email *</label>
+                <input type="email" id="email" required
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Password *</label>
+                <input type="password" id="password" required
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Role *</label>
+                <select id="role" required
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                    <option value="MAHASISWA">Mahasiswa / UKM</option>
+                    <option value="SARPRAS">Petugas Sarpras</option>
+                    <option value="SECURITY">Petugas Security</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Organisasi ID (opsional)</label>
+                <input type="number" id="organisasiId"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="Isi jika terkait himpunan/UKM tertentu">
+            </div>
+
+            <button type="submit"
+                class="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition">
+                Daftar
+            </button>
+        </form>
+
+        <div class="mt-6 text-center text-sm text-gray-600">
+            Sudah punya akun?
+            <a href="/view/index.html" class="text-green-600 hover:text-green-800 font-medium">Masuk di sini</a>
+        </div>
+
+        <div id="messageBox" class="mt-4 text-sm hidden"></div>
+    </div>
+
+    <script src="/view/js/api.js"></script>
+    <script>
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const payload = {
+                nama: document.getElementById('nama').value,
+                email: document.getElementById('email').value,
+                password: document.getElementById('password').value,
+                role: document.getElementById('role').value,
+                organisasi_id: document.getElementById('organisasiId').value ? parseInt(document.getElementById('organisasiId').value) : null
+            };
+
+            const messageBox = document.getElementById('messageBox');
+            messageBox.classList.add('hidden');
+
+            try {
+                const resp = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    throw new Error(data.error || 'Pendaftaran gagal');
+                }
+
+                messageBox.textContent = 'Pendaftaran berhasil! Anda akan diarahkan ke halaman login.';
+                messageBox.className = 'mt-4 text-sm text-green-600';
+                messageBox.classList.remove('hidden');
+
+                setTimeout(() => {
+                    window.location.href = '/view/index.html';
+                }, 1500);
+            } catch (error) {
+                messageBox.textContent = error.message;
+                messageBox.className = 'mt-4 text-sm text-red-600';
+                messageBox.classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
+

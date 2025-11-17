@@ -1,0 +1,181 @@
+package router
+
+import (
+	"backend-sarpras/handlers"
+	"backend-sarpras/middleware"
+	"backend-sarpras/repositories"
+	"backend-sarpras/services"
+	"database/sql"
+	"net/http"
+	"strings"
+)
+
+func New(db *sql.DB) http.Handler {
+	mux := http.NewServeMux()
+
+	// Initialize repositories
+	userRepo := repositories.NewUserRepository(db)
+	ruanganRepo := repositories.NewRuanganRepository(db)
+	barangRepo := repositories.NewBarangRepository(db)
+	peminjamanRepo := repositories.NewPeminjamanRepository(db)
+	kehadiranRepo := repositories.NewKehadiranRepository(db)
+	notifikasiRepo := repositories.NewNotifikasiRepository(db)
+	logRepo := repositories.NewLogAktivitasRepository(db)
+
+	// Initialize services
+	authService := services.NewAuthService(userRepo)
+	peminjamanService := services.NewPeminjamanService(
+		peminjamanRepo,
+		barangRepo,
+		notifikasiRepo,
+		logRepo,
+		userRepo,
+	)
+	kehadiranService := services.NewKehadiranService(
+		kehadiranRepo,
+		peminjamanRepo,
+		logRepo,
+	)
+
+	// Initialize handlers
+	authHandler := handlers.NewAuthHandler(authService)
+	ruanganHandler := handlers.NewRuanganHandler(ruanganRepo)
+	barangHandler := handlers.NewBarangHandler(barangRepo)
+	peminjamanHandler := handlers.NewPeminjamanHandler(
+		peminjamanService,
+		peminjamanRepo,
+		ruanganRepo,
+		userRepo,
+	)
+	kehadiranHandler := handlers.NewKehadiranHandler(
+		kehadiranService,
+		kehadiranRepo,
+		peminjamanRepo,
+	)
+	notifikasiHandler := handlers.NewNotifikasiHandler(notifikasiRepo)
+	logHandler := handlers.NewLogAktivitasHandler(logRepo)
+
+	// CORS middleware
+	corsMiddleware := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	withAuth := func(h http.Handler) http.Handler {
+		return corsMiddleware(middleware.AuthMiddleware(h))
+	}
+
+	withRole := func(h http.Handler, roles ...string) http.Handler {
+		return corsMiddleware(middleware.AuthMiddleware(middleware.RequireRole(roles...)(h)))
+	}
+
+	// Public routes
+	mux.HandleFunc("/api/auth/login", authHandler.Login)
+	mux.HandleFunc("/api/auth/register", authHandler.Register)
+	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	// Protected routes - Ruangan
+	mux.Handle("/api/ruangan", corsMiddleware(http.HandlerFunc(ruanganHandler.GetAll)))
+	mux.Handle("/api/ruangan/", corsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			ruanganHandler.GetByID(w, r)
+		case http.MethodPut:
+			withRole(http.HandlerFunc(ruanganHandler.Update), "SARPRAS", "ADMIN").ServeHTTP(w, r)
+		case http.MethodDelete:
+			withRole(http.HandlerFunc(ruanganHandler.Delete), "SARPRAS", "ADMIN").ServeHTTP(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+	mux.Handle("/api/ruangan/create", withRole(http.HandlerFunc(ruanganHandler.Create), "SARPRAS", "ADMIN"))
+
+	// Protected routes - Barang
+	mux.Handle("/api/barang", corsMiddleware(http.HandlerFunc(barangHandler.GetAll)))
+	mux.Handle("/api/barang/", corsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			barangHandler.GetByID(w, r)
+		case http.MethodPut:
+			withRole(http.HandlerFunc(barangHandler.Update), "SARPRAS", "ADMIN").ServeHTTP(w, r)
+		case http.MethodDelete:
+			withRole(http.HandlerFunc(barangHandler.Delete), "SARPRAS", "ADMIN").ServeHTTP(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+	mux.Handle("/api/barang/create", withRole(http.HandlerFunc(barangHandler.Create), "SARPRAS", "ADMIN"))
+
+	// Protected routes - Peminjaman
+	mux.HandleFunc("/api/peminjaman", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			withAuth(http.HandlerFunc(peminjamanHandler.Create)).ServeHTTP(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	mux.Handle("/api/peminjaman/me", withAuth(http.HandlerFunc(peminjamanHandler.GetMyPeminjaman)))
+	mux.Handle("/api/peminjaman/pending", withRole(http.HandlerFunc(peminjamanHandler.GetPending), "SARPRAS", "ADMIN"))
+	mux.HandleFunc("/api/peminjaman/", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		if len(path) > len("/api/peminjaman/") {
+			remaining := path[len("/api/peminjaman/"):]
+			if strings.HasSuffix(remaining, "/verifikasi") {
+				if r.Method == http.MethodPost {
+					withRole(http.HandlerFunc(peminjamanHandler.Verifikasi), "SARPRAS", "ADMIN").ServeHTTP(w, r)
+				} else {
+					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				}
+			} else {
+				// Regular ID lookup
+				if r.Method == http.MethodGet {
+					corsMiddleware(http.HandlerFunc(peminjamanHandler.GetByID)).ServeHTTP(w, r)
+				} else {
+					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				}
+			}
+		}
+	})
+	mux.Handle("/api/jadwal-ruangan", corsMiddleware(http.HandlerFunc(peminjamanHandler.GetJadwalRuangan)))
+	mux.Handle("/api/jadwal-aktif", withRole(http.HandlerFunc(peminjamanHandler.GetJadwalAktif), "SECURITY", "ADMIN"))
+	mux.Handle("/api/laporan/peminjaman", withRole(http.HandlerFunc(peminjamanHandler.GetLaporan), "SARPRAS", "ADMIN"))
+
+	// Protected routes - Kehadiran
+	mux.Handle("/api/kehadiran", withRole(http.HandlerFunc(kehadiranHandler.Create), "SECURITY", "ADMIN"))
+	mux.Handle("/api/laporan/kehadiran", withRole(http.HandlerFunc(kehadiranHandler.GetByPeminjamanID), "SARPRAS", "ADMIN", "SECURITY"))
+
+	// Protected routes - Notifikasi
+	mux.Handle("/api/notifikasi/me", withAuth(http.HandlerFunc(notifikasiHandler.GetMyNotifikasi)))
+	mux.Handle("/api/notifikasi/count", withAuth(http.HandlerFunc(notifikasiHandler.GetUnreadCount)))
+	mux.HandleFunc("/api/notifikasi/", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		if len(path) > len("/api/notifikasi/") {
+			idOrAction := path[len("/api/notifikasi/"):]
+			if idOrAction == "dibaca" || path[len(path)-len("/dibaca"):] == "/dibaca" {
+				withAuth(http.HandlerFunc(notifikasiHandler.MarkAsRead)).ServeHTTP(w, r)
+			}
+		}
+	})
+
+	// Protected routes - Log Aktivitas
+	mux.Handle("/api/log-aktivitas", withRole(http.HandlerFunc(logHandler.GetAll), "ADMIN"))
+
+	// Static files
+	mux.Handle("/view/", http.StripPrefix("/view/", http.FileServer(http.Dir("view"))))
+	mux.Handle("/", http.FileServer(http.Dir("view")))
+
+	return corsMiddleware(mux)
+}

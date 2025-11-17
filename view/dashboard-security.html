@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Security - Sistem Peminjaman Sarpras</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <nav class="bg-white shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <h1 class="text-xl font-bold text-gray-800">Sistem Peminjaman Sarpras</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="userName" class="text-gray-700"></span>
+                    <button onclick="logout()" class="text-red-600 hover:text-red-800">Logout</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="mb-6">
+            <h2 class="text-2xl font-bold text-gray-800">Dashboard Petugas Security</h2>
+        </div>
+
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Jadwal Peminjaman Aktif</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Tanggal Mulai</label>
+                    <input type="date" id="startDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Tanggal Selesai</label>
+                    <input type="date" id="endDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+            </div>
+            <button onclick="loadJadwal()" class="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700">
+                Filter Jadwal
+            </button>
+        </div>
+
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ruangan</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tanggal</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Peminjam</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="jadwalTable" class="bg-white divide-y divide-gray-200">
+                    <tr>
+                        <td colspan="4" class="px-6 py-4 text-center text-gray-500">Memuat data...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Modal Verifikasi Kehadiran -->
+    <div id="kehadiranModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Verifikasi Kehadiran</h3>
+            <form id="kehadiranForm">
+                <input type="hidden" id="modalPeminjamanId">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Status Kehadiran</label>
+                    <select id="statusKehadiran" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <option value="">Pilih Status</option>
+                        <option value="HADIR">Hadir</option>
+                        <option value="TIDAK_HADIR">Tidak Hadir</option>
+                        <option value="TERLAMBAT">Terlambat</option>
+                    </select>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Catatan</label>
+                    <textarea id="catatanKehadiran" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
+                </div>
+                <div class="flex space-x-4">
+                    <button type="submit" class="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700">
+                        Simpan
+                    </button>
+                    <button type="button" onclick="closeModal()" class="flex-1 bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300">
+                        Batal
+                    </button>
+                </div>
+            </form>
+            <div id="errorMessage" class="mt-4 text-red-600 text-sm hidden"></div>
+        </div>
+    </div>
+
+    <script src="/view/js/api.js"></script>
+    <script>
+        checkAuth();
+        
+        const user = getCurrentUser();
+        if (user) {
+            document.getElementById('userName').textContent = user.nama;
+        }
+
+        // Set default dates (today and next 7 days)
+        const today = new Date();
+        const nextWeek = new Date(today);
+        nextWeek.setDate(nextWeek.getDate() + 7);
+        
+        document.getElementById('startDate').value = today.toISOString().split('T')[0];
+        document.getElementById('endDate').value = nextWeek.toISOString().split('T')[0];
+
+        async function loadJadwal() {
+            const start = document.getElementById('startDate').value;
+            const end = document.getElementById('endDate').value;
+            
+            if (!start || !end) {
+                alert('Pilih tanggal mulai dan selesai');
+                return;
+            }
+
+            try {
+                const startISO = new Date(start).toISOString();
+                const endISO = new Date(end).toISOString();
+                
+                const data = await apiCall(`/jadwal-aktif?start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}`);
+                const tbody = document.getElementById('jadwalTable');
+                
+                if (data && data.length > 0) {
+                    tbody.innerHTML = data.map(j => `
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-900">${j.ruangan ? j.ruangan.nama_ruangan : 'N/A'}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                ${new Date(j.tanggal_mulai).toLocaleString('id-ID')}<br>
+                                <span class="text-gray-500">s/d ${new Date(j.tanggal_selesai).toLocaleString('id-ID')}</span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${j.peminjam ? j.peminjam.nama : 'N/A'}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <button onclick="openModal(${j.id})" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">
+                                    Verifikasi Kehadiran
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">Tidak ada jadwal aktif</td></tr>';
+                }
+            } catch (error) {
+                console.error('Error loading jadwal:', error);
+                document.getElementById('jadwalTable').innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-red-600">Error memuat data</td></tr>';
+            }
+        }
+
+        function openModal(peminjamanId) {
+            document.getElementById('modalPeminjamanId').value = peminjamanId;
+            document.getElementById('kehadiranModal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('kehadiranModal').classList.add('hidden');
+            document.getElementById('kehadiranForm').reset();
+            document.getElementById('errorMessage').classList.add('hidden');
+        }
+
+        document.getElementById('kehadiranForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const peminjamanId = document.getElementById('modalPeminjamanId').value;
+            const statusKehadiran = document.getElementById('statusKehadiran').value;
+            const catatan = document.getElementById('catatanKehadiran').value;
+
+            try {
+                await apiCall('/kehadiran', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        peminjaman_id: parseInt(peminjamanId),
+                        status_kehadiran: statusKehadiran,
+                        catatan: catatan
+                    })
+                });
+                
+                alert('Kehadiran berhasil dicatat!');
+                closeModal();
+                loadJadwal();
+            } catch (error) {
+                document.getElementById('errorMessage').textContent = error.message;
+                document.getElementById('errorMessage').classList.remove('hidden');
+            }
+        });
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/view/index.html';
+        }
+
+        loadJadwal();
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Mahasiswa - Sistem Peminjaman Sarpras</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <nav class="bg-white shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <h1 class="text-xl font-bold text-gray-800">Sistem Peminjaman Sarpras</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="userName" class="text-gray-700"></span>
+                    <button onclick="logout()" class="text-red-600 hover:text-red-800">Logout</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="mb-6">
+            <h2 class="text-2xl font-bold text-gray-800">Dashboard Mahasiswa</h2>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <a href="/view/pengajuan-peminjaman.html" class="bg-white p-6 rounded-lg shadow hover:shadow-md transition">
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">Ajukan Peminjaman</h3>
+                <p class="text-gray-600">Buat pengajuan peminjaman ruangan atau barang</p>
+            </a>
+            <a href="/view/jadwal-ruangan.html" class="bg-white p-6 rounded-lg shadow hover:shadow-md transition">
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">Jadwal Ruangan</h3>
+                <p class="text-gray-600">Lihat ketersediaan ruangan</p>
+            </a>
+            <a href="/view/riwayat-peminjaman.html" class="bg-white p-6 rounded-lg shadow hover:shadow-md transition">
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">Riwayat Peminjaman</h3>
+                <p class="text-gray-600">Lihat status pengajuan Anda</p>
+            </a>
+        </div>
+
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Peminjaman Terbaru</h3>
+            <div id="peminjamanList" class="space-y-4">
+                <p class="text-gray-500">Memuat data...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/view/js/api.js"></script>
+    <script>
+        checkAuth();
+        
+        const user = getCurrentUser();
+        if (user) {
+            document.getElementById('userName').textContent = user.nama;
+        }
+
+        async function loadPeminjaman() {
+            try {
+                const data = await apiCall('/peminjaman/me');
+                const container = document.getElementById('peminjamanList');
+                
+                if (data && data.length > 0) {
+                    container.innerHTML = data.slice(0, 5).map(p => `
+                        <div class="border-l-4 ${getStatusColor(p.status)} p-4 bg-gray-50">
+                            <div class="flex justify-between">
+                                <div>
+                                    <p class="font-semibold">${p.ruangan ? p.ruangan.nama_ruangan : 'Barang'}</p>
+                                    <p class="text-sm text-gray-600">${new Date(p.tanggal_mulai).toLocaleDateString('id-ID')} - ${new Date(p.tanggal_selesai).toLocaleDateString('id-ID')}</p>
+                                </div>
+                                <span class="px-3 py-1 rounded-full text-sm ${getStatusBadgeColor(p.status)}">${p.status}</span>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    container.innerHTML = '<p class="text-gray-500">Belum ada peminjaman</p>';
+                }
+            } catch (error) {
+                console.error('Error loading peminjaman:', error);
+            }
+        }
+
+        function getStatusColor(status) {
+            const colors = {
+                'PENDING': 'border-yellow-500',
+                'APPROVED': 'border-green-500',
+                'REJECTED': 'border-red-500',
+                'FINISHED': 'border-blue-500'
+            };
+            return colors[status] || 'border-gray-500';
+        }
+
+        function getStatusBadgeColor(status) {
+            const colors = {
+                'PENDING': 'bg-yellow-100 text-yellow-800',
+                'APPROVED': 'bg-green-100 text-green-800',
+                'REJECTED': 'bg-red-100 text-red-800',
+                'FINISHED': 'bg-blue-100 text-blue-800'
+            };
+            return colors[status] || 'bg-gray-100 text-gray-800';
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/view/index.html';
+        }
+
+        loadPeminjaman();
+    </script>
+</body>
+</html>
+
