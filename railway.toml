@@ -1,0 +1,27 @@
+# Railway.app Configuration File
+
+[build]
+# Gunakan Dockerfile untuk build
+builder = "dockerfile"
+
+[deploy]
+# Restart policy
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 5
+
+# Expose ports
+ports = [8000]
+
+# Start command
+startCommand = "./backend-sarpras"
+
+[env]
+# Environment variables untuk Railway
+DATABASE_URL = ""  # Set di Railway dashboard
+JWT_SECRET = ""    # Set di Railway dashboard
+CORS_ALLOWED_ORIGIN = ""  # Set ke URL frontend
+PORT = "8000"
+
+# Health check endpoint
+healthcheckPath = "/api/health"
+healthcheckTimeout = 30
