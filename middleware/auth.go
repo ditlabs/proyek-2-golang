@@ -1,11 +1,12 @@
 package middleware
 
 import (
+	"backend-sarpras/models"
 	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
-	"backend-sarpras/models"
+
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -20,7 +21,13 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-var jwtSecret = []byte("your-secret-key-change-in-production") // TODO: ambil dari env
+// jwtSecret will be set at runtime from config
+var jwtSecret []byte
+
+// InitJWTSecret initialize JWT secret from config (call this from main.go)
+func InitJWTSecret(secret string) {
+	jwtSecret = []byte(secret)
+}
 
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -95,4 +102,3 @@ func GetUserFromContext(r *http.Request) *models.User {
 	}
 	return user
 }
-

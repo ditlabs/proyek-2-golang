@@ -4,20 +4,23 @@ import (
 	"backend-sarpras/models"
 	"backend-sarpras/repositories"
 	"errors"
+	"time"
+
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
-	"time"
 )
 
 type AuthService struct {
-	UserRepo *repositories.UserRepository
+	UserRepo  *repositories.UserRepository
+	JWTSecret string
 }
 
-func NewAuthService(userRepo *repositories.UserRepository) *AuthService {
-	return &AuthService{UserRepo: userRepo}
+func NewAuthService(userRepo *repositories.UserRepository, jwtSecret string) *AuthService {
+	return &AuthService{
+		UserRepo:  userRepo,
+		JWTSecret: jwtSecret,
+	}
 }
-
-var jwtSecret = []byte("your-secret-key-change-in-production") // TODO: ambil dari env
 
 func (s *AuthService) Login(email, password string) (*models.LoginResponse, error) {
 	user, err := s.UserRepo.GetByEmail(email)
@@ -42,7 +45,7 @@ func (s *AuthService) Login(email, password string) (*models.LoginResponse, erro
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(jwtSecret)
+	tokenString, err := token.SignedString([]byte(s.JWTSecret))
 	if err != nil {
 		return nil, err
 	}

@@ -2,6 +2,7 @@ package router
 
 import (
 	"backend-sarpras/handlers"
+	"backend-sarpras/internal/config"
 	"backend-sarpras/middleware"
 	"backend-sarpras/repositories"
 	"backend-sarpras/services"
@@ -10,8 +11,11 @@ import (
 	"strings"
 )
 
-func New(db *sql.DB) http.Handler {
+func New(db *sql.DB, cfg *config.Config) http.Handler {
 	mux := http.NewServeMux()
+
+	// Initialize JWT secret in middleware
+	middleware.InitJWTSecret(cfg.JWTSecret)
 
 	// Initialize repositories
 	userRepo := repositories.NewUserRepository(db)
@@ -23,7 +27,7 @@ func New(db *sql.DB) http.Handler {
 	logRepo := repositories.NewLogAktivitasRepository(db)
 
 	// Initialize services
-	authService := services.NewAuthService(userRepo)
+	authService := services.NewAuthService(userRepo, cfg.JWTSecret)
 	peminjamanService := services.NewPeminjamanService(
 		peminjamanRepo,
 		barangRepo,
