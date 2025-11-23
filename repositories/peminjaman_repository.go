@@ -225,6 +225,50 @@ func (r *PeminjamanRepository) GetJadwalAktif(start, end time.Time) ([]models.Pe
 	return peminjaman, nil
 }
 
+func (r *PeminjamanRepository) GetJadwalAktifBelumVerifikasi(start, end time.Time) ([]models.Peminjaman, error) {
+	query := `
+		SELECT p.id, p.peminjam_id, p.ruangan_id, p.tanggal_mulai, p.tanggal_selesai, p.keperluan, p.status,
+		       p.surat_digital_url, p.verified_by, p.verified_at, COALESCE(p.catatan_verifikasi, ''), p.created_at
+		FROM peminjaman p
+		LEFT JOIN kehadiran_peminjam k ON k.peminjaman_id = p.id
+		WHERE p.status = 'APPROVED'
+		  AND p.ruangan_id IS NOT NULL
+		  AND p.tanggal_mulai >= $1
+		  AND p.tanggal_selesai <= $2
+		  AND k.id IS NULL
+		ORDER BY p.tanggal_mulai
+	`
+	rows, err := r.DB.Query(query, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var peminjaman []models.Peminjaman
+	for rows.Next() {
+		var p models.Peminjaman
+		err := rows.Scan(
+			&p.ID,
+			&p.PeminjamID,
+			&p.RuanganID,
+			&p.TanggalMulai,
+			&p.TanggalSelesai,
+			&p.Keperluan,
+			&p.Status,
+			&p.SuratDigitalURL,
+			&p.VerifiedBy,
+			&p.VerifiedAt,
+			&p.CatatanVerifikasi,
+			&p.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		peminjaman = append(peminjaman, p)
+	}
+	return peminjaman, nil
+}
+
 func (r *PeminjamanRepository) UpdateStatus(id int, status string, verifiedBy *int, catatan string) error {
 	query := `
 		UPDATE peminjaman

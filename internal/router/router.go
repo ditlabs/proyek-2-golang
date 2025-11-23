@@ -55,9 +55,12 @@ func New(db *sql.DB, cfg *config.Config) http.Handler {
 		kehadiranService,
 		kehadiranRepo,
 		peminjamanRepo,
+		ruanganRepo,
+		userRepo,
 	)
 	notifikasiHandler := handlers.NewNotifikasiHandler(notifikasiRepo)
 	logHandler := handlers.NewLogAktivitasHandler(logRepo)
+	infoHandler := handlers.InfoUmumHandler
 
 	// Use centralized CORS middleware from middleware package
 	corsMiddleware := middleware.CORSMiddleware
@@ -77,6 +80,8 @@ func New(db *sql.DB, cfg *config.Config) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))
 	})
+	// Public info umum endpoint
+	mux.HandleFunc("/api/info", infoHandler)
 
 	// Protected routes - Ruangan
 	mux.Handle("/api/ruangan", corsMiddleware(http.HandlerFunc(ruanganHandler.GetAll)))
@@ -142,11 +147,13 @@ func New(db *sql.DB, cfg *config.Config) http.Handler {
 	})
 	mux.Handle("/api/jadwal-ruangan", corsMiddleware(http.HandlerFunc(peminjamanHandler.GetJadwalRuangan)))
 	mux.Handle("/api/jadwal-aktif", withRole(http.HandlerFunc(peminjamanHandler.GetJadwalAktif), "SECURITY", "ADMIN"))
+	mux.Handle("/api/jadwal-aktif-belum-verifikasi", withRole(http.HandlerFunc(peminjamanHandler.GetJadwalAktifBelumVerifikasi), "SECURITY", "ADMIN"))
 	mux.Handle("/api/laporan/peminjaman", withRole(http.HandlerFunc(peminjamanHandler.GetLaporan), "SARPRAS", "ADMIN"))
 
 	// Protected routes - Kehadiran
 	mux.Handle("/api/kehadiran", withRole(http.HandlerFunc(kehadiranHandler.Create), "SECURITY", "ADMIN"))
 	mux.Handle("/api/laporan/kehadiran", withRole(http.HandlerFunc(kehadiranHandler.GetByPeminjamanID), "SARPRAS", "ADMIN", "SECURITY"))
+	mux.Handle("/api/kehadiran-riwayat", withRole(http.HandlerFunc(kehadiranHandler.GetRiwayatBySecurity), "SECURITY", "ADMIN"))
 
 	// Protected routes - Notifikasi
 	mux.Handle("/api/notifikasi/me", withAuth(http.HandlerFunc(notifikasiHandler.GetMyNotifikasi)))

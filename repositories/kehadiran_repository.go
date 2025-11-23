@@ -1,8 +1,8 @@
 package repositories
 
 import (
-	"database/sql"
 	"backend-sarpras/models"
+	"database/sql"
 )
 
 type KehadiranRepository struct {
@@ -82,3 +82,34 @@ func (r *KehadiranRepository) GetAll(start, end string) ([]models.KehadiranPemin
 	return kehadiran, nil
 }
 
+func (r *KehadiranRepository) GetBySecurityID(securityID int) ([]models.KehadiranPeminjam, error) {
+	query := `
+		SELECT id, peminjaman_id, security_id, status_kehadiran, waktu_verifikasi, catatan
+		FROM kehadiran_peminjam
+		WHERE security_id = $1
+		ORDER BY waktu_verifikasi DESC
+	`
+	rows, err := r.DB.Query(query, securityID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []models.KehadiranPeminjam
+	for rows.Next() {
+		var k models.KehadiranPeminjam
+		err := rows.Scan(
+			&k.ID,
+			&k.PeminjamanID,
+			&k.SecurityID,
+			&k.StatusKehadiran,
+			&k.WaktuVerifikasi,
+			&k.Catatan,
+		)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, k)
+	}
+	return result, nil
+}

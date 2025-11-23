@@ -1,29 +1,35 @@
 package handlers
 
 import (
-	"encoding/json"
-	"net/http"
 	"backend-sarpras/middleware"
 	"backend-sarpras/models"
 	"backend-sarpras/repositories"
 	"backend-sarpras/services"
+	"encoding/json"
+	"net/http"
 )
 
 type KehadiranHandler struct {
 	KehadiranService *services.KehadiranService
 	KehadiranRepo    *repositories.KehadiranRepository
 	PeminjamanRepo   *repositories.PeminjamanRepository
+	RuanganRepo      *repositories.RuanganRepository
+	UserRepo         *repositories.UserRepository
 }
 
 func NewKehadiranHandler(
 	kehadiranService *services.KehadiranService,
 	kehadiranRepo *repositories.KehadiranRepository,
 	peminjamanRepo *repositories.PeminjamanRepository,
+	ruanganRepo *repositories.RuanganRepository,
+	userRepo *repositories.UserRepository,
 ) *KehadiranHandler {
 	return &KehadiranHandler{
 		KehadiranService: kehadiranService,
 		KehadiranRepo:    kehadiranRepo,
 		PeminjamanRepo:   peminjamanRepo,
+		RuanganRepo:      ruanganRepo,
+		UserRepo:         userRepo,
 	}
 }
 
@@ -76,3 +82,42 @@ func (h *KehadiranHandler) GetByPeminjamanID(w http.ResponseWriter, r *http.Requ
 	json.NewEncoder(w).Encode([]models.KehadiranPeminjam{})
 }
 
+func (h *KehadiranHandler) GetRiwayatBySecurity(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	user := middleware.GetUserFromContext(r)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	kehadiranList, err := h.KehadiranRepo.GetBySecurityID(user.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	for i := range kehadiranList {
+		if kehadiranList[i].PeminjamanID != 0 && h.PeminjamanRepo != nil {
+			peminjaman, _ := h.PeminjamanRepo.GetByID(kehadiranList[i].PeminjamanID)
+			if peminjaman != nil {
+				// Enrich ruangan
+				if peminjaman.RuanganID != nil && h.RuanganRepo != nil {
+					ruangan, _ := h.RuanganRepo.GetByID(*peminjaman.RuanganID)
+					peminjaman.Ruangan = ruangan
+				}
+				// Enrich peminjam
+				if h.UserRepo != nil {
+					peminjam, _ := h.UserRepo.GetByID(peminjaman.PeminjamID)
+					if peminjam != nil {
+						peminjam.PasswordHash = ""
+						peminjaman.Peminjam = peminjam
+					}
+				}
+			}
+			kehadiranList[i].Peminjaman = peminjaman
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(kehadiranList)
+}

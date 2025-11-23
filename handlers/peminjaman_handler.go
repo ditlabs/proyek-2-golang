@@ -1,15 +1,15 @@
 package handlers
 
 import (
+	"backend-sarpras/middleware"
+	"backend-sarpras/models"
+	"backend-sarpras/repositories"
+	"backend-sarpras/services"
 	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
-	"backend-sarpras/middleware"
-	"backend-sarpras/models"
-	"backend-sarpras/repositories"
-	"backend-sarpras/services"
 )
 
 type PeminjamanHandler struct {
@@ -304,6 +304,61 @@ func (h *PeminjamanHandler) GetJadwalAktif(w http.ResponseWriter, r *http.Reques
 	json.NewEncoder(w).Encode(peminjaman)
 }
 
+func (h *PeminjamanHandler) GetJadwalAktifBelumVerifikasi(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	startStr := r.URL.Query().Get("start")
+	endStr := r.URL.Query().Get("end")
+
+	var start, end time.Time
+	var err error
+
+	if startStr == "" {
+		start = time.Now()
+	} else {
+		start, err = time.Parse(time.RFC3339, startStr)
+		if err != nil {
+			http.Error(w, "Invalid start date", http.StatusBadRequest)
+			return
+		}
+	}
+
+	if endStr == "" {
+		end = start.AddDate(0, 0, 7)
+	} else {
+		end, err = time.Parse(time.RFC3339, endStr)
+		if err != nil {
+			http.Error(w, "Invalid end date", http.StatusBadRequest)
+			return
+		}
+	}
+
+	peminjaman, err := h.PeminjamanRepo.GetJadwalAktifBelumVerifikasi(start, end)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Enrich dengan data relasi
+	for i := range peminjaman {
+		if peminjaman[i].RuanganID != nil {
+			ruangan, _ := h.RuanganRepo.GetByID(*peminjaman[i].RuanganID)
+			peminjaman[i].Ruangan = ruangan
+		}
+		user, _ := h.UserRepo.GetByID(peminjaman[i].PeminjamID)
+		if user != nil {
+			user.PasswordHash = ""
+			peminjaman[i].Peminjam = user
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(peminjaman)
+}
+
 func (h *PeminjamanHandler) GetLaporan(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -370,4 +425,3 @@ func extractPeminjamanID(path string) (int, error) {
 	raw := strings.Trim(path[len(prefix):], "/")
 	return strconv.Atoi(raw)
 }
-
