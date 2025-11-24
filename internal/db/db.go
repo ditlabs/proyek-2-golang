@@ -23,6 +23,6 @@ func Open(connString string) *sql.DB {
 		log.Fatalf("❌ failed to ping db: %v", err)
 	}
 
-	log.Println("✅ Database connected with pooling configured")
+	log.Println("Koneksi Database Berhasil")
 	return db
 }

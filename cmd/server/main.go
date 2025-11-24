@@ -39,7 +39,7 @@ func main() {
 	}
 
 	// Jalankan server HTTP di goroutine terpisah
-	log.Printf("✅ Server running on port %s", cfg.Port)
+	log.Printf("Server running on http://localhost:%s", cfg.Port)
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("❌ Server error: %v", err)
