@@ -5,7 +5,10 @@ import (
 	"backend-sarpras/models"
 	"backend-sarpras/repositories"
 	"backend-sarpras/services"
+	storagesvc "backend-sarpras/internal/services"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -64,6 +67,45 @@ func (h *PeminjamanHandler) Create(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(peminjaman)
 }
 
+func (h *PeminjamanHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	id, err := extractPeminjamanID(r.URL.Path)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	peminjaman, err := h.PeminjamanRepo.GetByID(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if peminjaman == nil {
+		http.Error(w, "Peminjaman not found", http.StatusNotFound)
+		return
+	}
+
+	// Enrich dengan data relasi
+	if peminjaman.RuanganID != nil {
+		ruangan, _ := h.RuanganRepo.GetByID(*peminjaman.RuanganID)
+		peminjaman.Ruangan = ruangan
+	}
+	user, _ := h.UserRepo.GetByID(peminjaman.PeminjamID)
+	if user != nil {
+		user.PasswordHash = ""
+		peminjaman.Peminjam = user
+	}
+	items, _ := h.PeminjamanRepo.GetPeminjamanBarang(peminjaman.ID)
+	peminjaman.Barang = items
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(peminjaman)
+}
+
 func (h *PeminjamanHandler) GetMyPeminjaman(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -101,13 +143,102 @@ func (h *PeminjamanHandler) GetMyPeminjaman(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(peminjaman)
 }
 
-func (h *PeminjamanHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+func (h *PeminjamanHandler) UploadSurat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Pastikan user login
+	user := middleware.GetUserFromContext(r)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Ambil ID peminjaman dari URL: /api/peminjaman/{id}/upload-surat
+	id, err := extractPeminjamanID(strings.TrimSuffix(r.URL.Path, "/upload-surat"))
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	// Parse multipart form (max 5MB)
+	if err := r.ParseMultipartForm(5 << 20); err != nil {
+		http.Error(w, "Gagal parsing form", http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("surat")
+	if err != nil {
+		http.Error(w, "File surat wajib diupload", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Validasi ukuran max 2MB
+	if header.Size > 2*1024*1024 {
+		http.Error(w, "Ukuran file maksimal 2MB", http.StatusBadRequest)
+		return
+	}
+
+	// Validasi MIME type via sniff
+	buf := make([]byte, 512)
+	n, _ := file.Read(buf)
+	contentType := http.DetectContentType(buf[:n])
+	if contentType != "application/pdf" {
+		http.Error(w, "File harus berupa PDF", http.StatusBadRequest)
+		return
+	}
+
+	// Reset reader ke awal
+	if _, err := file.Seek(0, 0); err != nil {
+		http.Error(w, "Gagal membaca file", http.StatusInternalServerError)
+		return
+	}
+
+	// Baca semua bytes
+	fileBytes, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "Gagal membaca file", http.StatusInternalServerError)
+		return
+	}
+
+	// Path file di bucket (Supabase Storage)
+	objectPath := fmt.Sprintf("peminjaman/%d/surat.pdf", id)
+
+	// Upload ke Supabase Storage
+	if err := storagesvc.UploadPDFToSupabase(objectPath, fileBytes); err != nil {
+		http.Error(w, "Gagal upload file ke storage: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Simpan path ke database lewat repository
+	if err := h.PeminjamanRepo.UpdateSuratDigitalURL(id, objectPath); err != nil {
+		http.Error(w, "Gagal menyimpan path surat ke database", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message":           "Surat berhasil diupload",
+		"surat_digital_url": objectPath,
+	})
+}
+
+func (h *PeminjamanHandler) GetSuratDigital(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	id, err := extractPeminjamanID(r.URL.Path)
+	user := middleware.GetUserFromContext(r)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	id, err := extractPeminjamanID(strings.TrimSuffix(r.URL.Path, "/surat"))
 	if err != nil {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
@@ -119,25 +250,32 @@ func (h *PeminjamanHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if peminjaman == nil {
-		http.Error(w, "Not found", http.StatusNotFound)
+		http.Error(w, "Peminjaman tidak ditemukan", http.StatusNotFound)
 		return
 	}
 
-	// Enrich dengan data relasi
-	if peminjaman.RuanganID != nil {
-		ruangan, _ := h.RuanganRepo.GetByID(*peminjaman.RuanganID)
-		peminjaman.Ruangan = ruangan
+	if peminjaman.SuratDigitalURL == "" {
+		http.Error(w, "Surat belum tersedia", http.StatusNotFound)
+		return
 	}
-	user, _ := h.UserRepo.GetByID(peminjaman.PeminjamID)
-	if user != nil {
-		user.PasswordHash = ""
-		peminjaman.Peminjam = user
+
+	// Hanya peminjam atau petugas SARPRAS/ADMIN yang boleh mengakses
+	if user.ID != peminjaman.PeminjamID && user.Role != "SARPRAS" && user.Role != "ADMIN" {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
 	}
-	items, _ := h.PeminjamanRepo.GetPeminjamanBarang(peminjaman.ID)
-	peminjaman.Barang = items
+
+	signedURL, err := storagesvc.GenerateSignedURL(peminjaman.SuratDigitalURL)
+	if err != nil {
+		http.Error(w, "Gagal membuat tautan surat", http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(peminjaman)
+	json.NewEncoder(w).Encode(map[string]string{
+		"signed_url": signedURL,
+		"path":       peminjaman.SuratDigitalURL,
+	})
 }
 
 func (h *PeminjamanHandler) GetPending(w http.ResponseWriter, r *http.Request) {
@@ -418,10 +556,16 @@ func (h *PeminjamanHandler) GetLaporan(w http.ResponseWriter, r *http.Request) {
 }
 
 func extractPeminjamanID(path string) (int, error) {
-	prefix := "/api/peminjaman/"
-	if !strings.HasPrefix(path, prefix) || len(path) <= len(prefix) {
+	path = strings.TrimSpace(path)
+	if path == "" {
 		return 0, strconv.ErrSyntax
 	}
-	raw := strings.Trim(path[len(prefix):], "/")
-	return strconv.Atoi(raw)
+
+	segments := strings.Split(strings.Trim(path, "/"), "/")
+	for i := 0; i < len(segments); i++ {
+		if segments[i] == "peminjaman" && i+1 < len(segments) {
+			return strconv.Atoi(segments[i+1])
+		}
+	}
+	return 0, strconv.ErrSyntax
 }

@@ -361,3 +361,12 @@ func (r *PeminjamanRepository) GetLaporan(start, end time.Time, status string) (
 	}
 	return peminjaman, nil
 }
+
+func (r *PeminjamanRepository) UpdateSuratDigitalURL(id int, path string) error {
+	_, err := r.DB.Exec(`
+		UPDATE peminjaman 
+		SET surat_digital_url = $1
+		WHERE id = $2
+	`, path, id)
+	return err
+}

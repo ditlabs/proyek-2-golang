@@ -116,26 +116,42 @@ func New(db *sql.DB, cfg *config.Config) http.Handler {
 	mux.Handle("/api/barang/create", withRole(http.HandlerFunc(barangHandler.Create), "SARPRAS", "ADMIN"))
 
 	// Protected routes - Peminjaman
-	mux.HandleFunc("/api/peminjaman", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			withAuth(http.HandlerFunc(peminjamanHandler.Create)).ServeHTTP(w, r)
-		} else {
+	mux.Handle("/api/peminjaman", withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			peminjamanHandler.Create(w, r)
+		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	})
-	mux.Handle("/api/peminjaman/me", withAuth(http.HandlerFunc(peminjamanHandler.GetMyPeminjaman)))
-	mux.Handle("/api/peminjaman/pending", withRole(http.HandlerFunc(peminjamanHandler.GetPending), "SARPRAS", "ADMIN"))
+	})))
 	mux.HandleFunc("/api/peminjaman/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if len(path) > len("/api/peminjaman/") {
 			remaining := path[len("/api/peminjaman/"):]
-			if strings.HasSuffix(remaining, "/verifikasi") {
+
+			switch {
+			case strings.HasSuffix(remaining, "/verifikasi"):
 				if r.Method == http.MethodPost {
 					withRole(http.HandlerFunc(peminjamanHandler.Verifikasi), "SARPRAS", "ADMIN").ServeHTTP(w, r)
 				} else {
 					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				}
-			} else {
+
+			case strings.HasSuffix(remaining, "/upload-surat"):
+				if r.Method == http.MethodPost {
+					withAuth(http.HandlerFunc(peminjamanHandler.UploadSurat)).ServeHTTP(w, r)
+				} else {
+					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				}
+
+			case strings.HasSuffix(remaining, "/surat"):
+				if r.Method == http.MethodGet {
+					withAuth(http.HandlerFunc(peminjamanHandler.GetSuratDigital)).ServeHTTP(w, r)
+				} else {
+					http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				}
+
+			default:
 				// Regular ID lookup
 				if r.Method == http.MethodGet {
 					corsMiddleware(http.HandlerFunc(peminjamanHandler.GetByID)).ServeHTTP(w, r)
@@ -145,6 +161,9 @@ func New(db *sql.DB, cfg *config.Config) http.Handler {
 			}
 		}
 	})
+
+	mux.Handle("/api/peminjaman/me", withAuth(http.HandlerFunc(peminjamanHandler.GetMyPeminjaman)))
+	mux.Handle("/api/peminjaman/pending", withRole(http.HandlerFunc(peminjamanHandler.GetPending), "SARPRAS", "ADMIN"))
 	mux.Handle("/api/jadwal-ruangan", corsMiddleware(http.HandlerFunc(peminjamanHandler.GetJadwalRuangan)))
 	mux.Handle("/api/jadwal-aktif", withRole(http.HandlerFunc(peminjamanHandler.GetJadwalAktif), "SECURITY", "ADMIN"))
 	mux.Handle("/api/jadwal-aktif-belum-verifikasi", withRole(http.HandlerFunc(peminjamanHandler.GetJadwalAktifBelumVerifikasi), "SECURITY", "ADMIN"))
