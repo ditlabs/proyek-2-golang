@@ -153,8 +153,8 @@ func (r *PeminjamanRepository) GetJadwalRuangan(start, end time.Time) ([]models.
 		JOIN users u ON p.peminjam_id = u.id
 		WHERE p.ruangan_id IS NOT NULL
 		  AND p.status = 'APPROVED'
-		  AND p.tanggal_mulai >= $1
-		  AND p.tanggal_selesai <= $2
+		  AND p.tanggal_mulai <= $2
+		  AND p.tanggal_selesai >= $1
 		ORDER BY p.tanggal_mulai
 	`
 	rows, err := r.DB.Query(query, start, end)
@@ -179,6 +179,9 @@ func (r *PeminjamanRepository) GetJadwalRuangan(start, end time.Time) ([]models.
 			return nil, err
 		}
 		jadwal = append(jadwal, j)
+	}
+	if jadwal == nil {
+		jadwal = []models.JadwalRuanganResponse{}
 	}
 	return jadwal, nil
 }
